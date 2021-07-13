@@ -13,6 +13,7 @@
 #include "gettimeofday.h"
 #else
 #include <sys/time.h>
+#include <libgen.h>
 #endif
 
 #ifdef OPENCV
@@ -141,7 +142,7 @@ double get_wall_time()
 }
 
 void demo(char *cfgfile, char *weightfile, float thresh, float hier_thresh, int cam_index, const char *filename, char **names, int classes, int avgframes,
-    int frame_skip, char *prefix, char *out_filename, int mjpeg_port, int dontdraw_bbox, int json_port, int dont_show, int ext_output, int letter_box_in, int time_limit_sec, char *http_post_host,
+    int frame_skip, char *prefix, char *out_filename, int mjpeg_port, int dontdraw_bbox, int json_port, int dont_show, int ext_output, int save_labels, int letter_box_in, int time_limit_sec, char *http_post_host,
     int benchmark, int benchmark_layers)
 {
     if (avgframes < 1) avgframes = 1;
@@ -266,7 +267,9 @@ void demo(char *cfgfile, char *weightfile, float thresh, float hier_thresh, int 
         {
             const float nms = .45;    // 0.4F
             int local_nboxes = nboxes;
-            detection *local_dets = dets;
+            detection *local_dets = copy_detections(dets,nboxes);
+            free_detections(dets, nboxes);
+            dets = NULL; nboxes = 0;
             this_thread_yield();
 
             if (!benchmark) custom_atomic_store_int(&run_fetch_in_thread, 1); // if (custom_create_thread(&fetch_thread, 0, fetch_in_thread, 0)) error("Thread creation failed");
@@ -296,13 +299,42 @@ void demo(char *cfgfile, char *weightfile, float thresh, float hier_thresh, int 
                 int timeout = 3;            // 3 seconds
                 int http_post_port = 80;    // 443 https, 80 http
                 if (send_http_post_request(http_post_host, http_post_port, filename,
-                    local_dets, nboxes, classes, names, frame_id, ext_output, timeout))
+                    local_dets, local_nboxes, classes, names, frame_id, ext_output, timeout))
                 {
                     if (time_limit_sec > 0) send_http_post_once = 1;
                 }
             }
 
             if (!benchmark && !dontdraw_bbox) draw_detections_cv_v3(show_img, local_dets, local_nboxes, demo_thresh, demo_names, demo_alphabet, demo_classes, demo_ext_output);
+            if (save_labels)
+            {
+                char labelpath[4096];
+                replace_image_to_label(filename, labelpath);
+                FILE* fw = fopen(labelpath, (frame_id>1)?"ab":"wb");
+                if (fw == NULL) {
+                    char *basec = strdup(labelpath);
+                    char *bname = basename(basec);
+                    fw = fopen(bname, (frame_id>1)?"ab":"wb");
+                    free(basec);
+                }
+                int i;
+                for (i = 0; i < local_nboxes; ++i) {
+                    char buff[1024];
+                    int class_id = -1;
+                    float prob = 0;
+                    for (j = 0; j < l.classes; ++j) {
+                        if (local_dets[i].prob[j] > thresh && local_dets[i].prob[j] > prob) {
+                            prob = local_dets[i].prob[j];
+                            class_id = j;
+                        }
+                    }
+                    if (class_id >= 0) {
+                        sprintf(buff, "%lld %d %d %2.4f %2.4f %2.4f %2.4f\n", frame_id, class_id, local_dets[i].track_id, local_dets[i].bbox.x, local_dets[i].bbox.y, local_dets[i].bbox.w, local_dets[i].bbox.h);
+                        fwrite(buff, sizeof(char), strlen(buff), fw);
+                    }
+                }
+                fclose(fw);
+            }
             free_detections(local_dets, local_nboxes);
 
             printf("\nFPS:%.1f \t AVG_FPS:%.1f\n", fps, avg_fps);

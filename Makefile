@@ -1,7 +1,7 @@
-GPU=0
-CUDNN=0
+GPU=1
+CUDNN=1
 CUDNN_HALF=0
-OPENCV=0
+OPENCV=1
 AVX=0
 OPENMP=0
 LIBSO=0
@@ -73,7 +73,7 @@ else
 CC=gcc
 endif
 
-CPP=g++ -std=c++11
+CPP=g++ -std=c++11 
 NVCC=nvcc
 OPTS=-Ofast
 LDFLAGS= -lm -pthread
@@ -82,10 +82,11 @@ CFLAGS=-Wall -Wfatal-errors -Wno-unused-result -Wno-unknown-pragmas -fPIC
 
 ifeq ($(DEBUG), 1)
 #OPTS= -O0 -g
-#OPTS= -Og -g
+OPTS= -O0 -g -ggdb
 COMMON+= -DDEBUG
 CFLAGS+= -DDEBUG
 else
+#OPTS= -O3
 ifeq ($(AVX), 1)
 CFLAGS+= -ffp-contract=fast -mavx -mavx2 -msse3 -msse4.1 -msse4.2 -msse4a
 endif

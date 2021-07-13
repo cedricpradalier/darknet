@@ -832,8 +832,14 @@ detection *make_network_boxes(network *net, float thresh, int *num)
         if(l.type == GAUSSIAN_YOLO) dets[i].uc = (float*)xcalloc(4, sizeof(float)); // Gaussian_YOLOv3
         else dets[i].uc = NULL;
 
-        if (l.coords > 4) dets[i].mask = (float*)xcalloc(l.coords - 4, sizeof(float));
-        else dets[i].mask = NULL;
+        if (l.coords > 4) {
+            dets[i].mask = (float*)xcalloc(l.coords - 4, sizeof(float));
+            dets[i].mask_size = l.coords - 4;
+        } else {
+            dets[i].mask = NULL;
+            dets[i].mask_size = 0;
+        }
+
 
         if(l.embedding_output) dets[i].embeddings = (float*)xcalloc(l.embedding_size, sizeof(float));
         else dets[i].embeddings = NULL;
@@ -864,8 +870,13 @@ detection *make_network_boxes_batch(network *net, float thresh, int *num, int ba
         if (l.type == GAUSSIAN_YOLO) dets[i].uc = (float*)xcalloc(4, sizeof(float)); // Gaussian_YOLOv3
         else dets[i].uc = NULL;
 
-        if (l.coords > 4) dets[i].mask = (float*)xcalloc(l.coords - 4, sizeof(float));
-        else dets[i].mask = NULL;
+        if (l.coords > 4) {
+            dets[i].mask = (float*)xcalloc(l.coords - 4, sizeof(float));
+            dets[i].mask_size = l.coords - 4;
+        } else {
+            dets[i].mask = NULL;
+            dets[i].mask_size = 0;
+        }
 
         if (l.embedding_output) dets[i].embeddings = (float*)xcalloc(l.embedding_size, sizeof(float));
         else dets[i].embeddings = NULL;
@@ -960,6 +971,39 @@ detection *get_network_boxes(network *net, int w, int h, float thresh, float hie
     detection *dets = make_network_boxes(net, thresh, num);
     fill_network_boxes(net, w, h, thresh, hier, map, relative, dets, letter);
     return dets;
+}
+
+detection* copy_detections(detection *dets, int nboxes)
+{
+    detection* new_dets = (detection*)xcalloc(nboxes, sizeof(detection));
+    memcpy(new_dets,dets,sizeof(detection) * nboxes);
+    for (int i = 0; i < nboxes; ++i) {
+        new_dets[i].prob = (float*)xcalloc(dets[i].classes, sizeof(float));
+        memcpy(new_dets[i].prob,dets[i].prob,sizeof(float)*dets[i].classes);
+        // tx,ty,tw,th uncertainty
+        if(dets[i].uc) {
+            new_dets[i].uc = (float*)xcalloc(4, sizeof(float)); // Gaussian_YOLOv3
+            memcpy(new_dets[i].uc,dets[i].uc,sizeof(float)*4);
+        } else {
+            new_dets[i].uc = NULL;
+        }
+
+        if (dets[i].mask) {
+            new_dets[i].mask = (float*)xcalloc(dets[i].mask_size, sizeof(float));
+            memcpy(new_dets[i].mask,dets[i].mask,dets[i].mask_size*sizeof(float));
+        } else {
+            new_dets[i].mask = NULL;
+        }
+
+        if(dets[i].embeddings) {
+            new_dets[i].embeddings = (float*)xcalloc(dets[i].embedding_size, sizeof(float));
+            memcpy(new_dets[i].mask,dets[i].mask,sizeof(float)*dets[i].embedding_size);
+        } else {
+            new_dets[i].embeddings = NULL;
+        }
+        new_dets[i].embedding_size = dets[i].embedding_size;
+    }
+    return new_dets;
 }
 
 void free_detections(detection *dets, int n)
